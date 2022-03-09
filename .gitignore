@@ -1,0 +1,6 @@
+*.pem
+*.exe
+dump-tls-cert
+.idea
+notes.txt
+*.old
