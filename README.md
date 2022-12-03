@@ -1,8 +1,9 @@
 # dump-tls-cert
 
-- Dumps TLS certificate chain from a host in PEM format
+- Dumps TLS certificate chain presented by remote `host:port` in PEM format
+- Uses TLS over TCP to connect to the remote `host:port`
 - The certificate is dumped to STDOUT and written to a file `server-cert.pem`
-- Does not verify the remote SSL certificate presented by the remote host
+- Does not verify the remote SSL/TLS certificate presented by the remote `host:port`
 
 ### Usage
 
