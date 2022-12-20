@@ -14,17 +14,15 @@ import (
 	"testing"
 )
 
-
-//Country Name (2 letter code) [AU]:GB
-//State or Province Name (full name) [Some-State]:ENGLAND
-//Locality Name (eg, city) []:LONDON
-//Organization Name (eg, company) [Internet Widgits Pty Ltd]:example-org
-//Organizational Unit Name (eg, section) []:IT
-//Common Name (e.g. server FQDN or YOUR name) []:testserver.local
-//Email Address []:hostmaster@testserver.local
-
+// State or Province Name (full name) [Some-State]:ENGLAND
+// Country Name (2 letter code) [AU]:GB
+// Locality Name (eg, city) []:LONDON
+// Organization Name (eg, company) [Internet Widgits Pty Ltd]:example-org
+// Organizational Unit Name (eg, section) []:IT
+// Common Name (e.g. server FQDN or YOUR name) []:testserver.local
+// Email Address []:hostmaster@testserver.local
 const (
-	serverCert =`-----BEGIN CERTIFICATE-----
+	serverCert = `-----BEGIN CERTIFICATE-----
 MIIEFzCCAv+gAwIBAgIUcFHI/rDAqMY96GzvZSvHHsskMD0wDQYJKoZIhvcNAQEL
 BQAwgZoxCzAJBgNVBAYTAkdCMRAwDgYDVQQIDAdFTkdMQU5EMQ8wDQYDVQQHDAZM
 T05ET04xFDASBgNVBAoMC2V4YW1wbGUtb3JnMQswCQYDVQQLDAJJVDEZMBcGA1UE
@@ -80,10 +78,9 @@ Ckx9bdd0OfQ+wX1H1eYPVEa8
 `
 )
 
-
 func TestGetCertFromHostPortInPEM(t *testing.T) {
 	
-	t.Run("test with valid certificates", func (t *testing.T) {
+	t.Run("test with valid certificates", func(t *testing.T) {
 		certChain, err := tls.X509KeyPair([]byte(serverCert), []byte(serverKey))
 		
 		require.NoError(t, err)
@@ -114,7 +111,6 @@ func TestGetCertFromHostPortInPEM(t *testing.T) {
 			Port:     port,
 		}
 		
-		
 		var b bytes.Buffer
 		err = GetCertFromHostPortInPEM(&client, &b)
 		require.NoError(t, err)
@@ -122,7 +118,7 @@ func TestGetCertFromHostPortInPEM(t *testing.T) {
 		require.Equal(t, b.String(), serverCert)
 	})
 	
-	t.Run("test with invalid protocol", func (t *testing.T) {
+	t.Run("test with invalid protocol", func(t *testing.T) {
 		client := TLSClient{
 			Protocol: "foobar",
 			Host:     "localhost",
@@ -132,10 +128,10 @@ func TestGetCertFromHostPortInPEM(t *testing.T) {
 		err := GetCertFromHostPortInPEM(&client, io.Discard)
 		fmt.Println(err)
 		require.Error(t, err)
-
+		
 	})
 	
-	t.Run("test with invalid port", func (t *testing.T) {
+	t.Run("test with invalid port", func(t *testing.T) {
 		client := TLSClient{
 			Protocol: "tcp",
 			Host:     "localhost",
@@ -159,16 +155,16 @@ func TestCheckPort(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{"valid port", args {"5000"}, false },
-		{"invalid port >65535", args {"99999"}, true },
-		{"invalid port -1", args {"-1"}, true },
-		{"invalid port 0", args {"0"}, true },
+		{"valid port", args{"5000"}, false},
+		{"invalid port >65535", args{"99999"}, true},
+		{"invalid port -1", args{"-1"}, true},
+		{"invalid port 0", args{"0"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt := tt
 			t.Parallel()
-
+			
 			if err := CheckPort(tt.args.port); (err != nil) != tt.wantErr {
 				t.Errorf("CheckPort() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -178,7 +174,7 @@ func TestCheckPort(t *testing.T) {
 
 func TestIsEmptyString(t *testing.T) {
 	tests := []struct {
-		s string
+		s    string
 		name string
 		want bool
 	}{
@@ -196,26 +192,24 @@ func TestIsEmptyString(t *testing.T) {
 	}
 }
 
-
-
 type mockClient struct{}
 
 func (m *mockClient) TLSDial() ([]*x509.Certificate, error) {
-	emptyReply := make([]*x509.Certificate,1)
+	emptyReply := make([]*x509.Certificate, 1)
 	return emptyReply, nil
 }
 
 func TestEmptyCertificateReply(t *testing.T) {
 	m := &mockClient{}
 	_, err := m.TLSDial()
-
+	
 	require.Nil(t, err)
-
+	
 	var b bytes.Buffer
-
+	
 	err = GetCertFromHostPortInPEM(m, &b)
 	require.Error(t, err)
-
+	
 	require.Equal(t, "", b.String())
-
+	
 }
