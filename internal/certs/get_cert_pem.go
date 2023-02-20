@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,7 +15,15 @@ import (
 
 const (
 	protocol = "tcp" // The default Protocol that we use
+)
 
+var (
+	// ErrNoCertsReturned - no TLS certs were returned by the remote Peer
+	ErrNoCertsReturned = errors.New("no TLS certificates were found")
+	// ErrInvalidPortRange - Invalid port range
+	ErrInvalidPortRange = errors.New("invalid port range, port number should be <= 65535 and >= 1")
+	// ErrEmptyHost - empty host string was encountered
+	ErrEmptyHost = errors.New("host cannot be empty string")
 )
 
 // TLSDialer - dials a remote host over TCP to grab x509 certs
@@ -50,11 +59,11 @@ func (tc *TLSClient) TLSDial() ([]*x509.Certificate, error) {
 	}
 
 	if err := CheckPort(tc.Port); err != nil {
-		return certs, err
+		return certs, fmt.Errorf("invalid port: %w", err)
 	}
 
 	if ok := IsEmptyString(tc.Host); ok {
-		return certs, fmt.Errorf("host cannot be empty string")
+		return certs, ErrEmptyHost
 	}
 
 	target := net.JoinHostPort(tc.Host, tc.Port)
@@ -77,7 +86,7 @@ func (tc *TLSClient) TLSDial() ([]*x509.Certificate, error) {
 	state := conn.ConnectionState()
 
 	if len(state.PeerCertificates) < 1 {
-		return nil, fmt.Errorf("no certificates found for %s", target)
+		return nil, fmt.Errorf("no certificates found for %s: %w", target, ErrNoCertsReturned)
 	}
 
 	return state.PeerCertificates, nil
@@ -110,7 +119,7 @@ func GetCert(td TLSDialer, w io.Writer) error {
 	pemCert := b.String()
 
 	if pemCert == "" {
-		return fmt.Errorf("no certs were returned by the server")
+		return fmt.Errorf("no certs were returned by the remote peer: %w", ErrNoCertsReturned)
 	}
 
 	_, err = io.Copy(w, &b)
@@ -126,11 +135,11 @@ func GetCert(td TLSDialer, w io.Writer) error {
 func CheckPort(port string) error {
 	portN, err := strconv.Atoi(port)
 	if err != nil {
-		return fmt.Errorf("unable to convert PORT number %v to integer - %w", port, err)
+		return fmt.Errorf("unable to convert PORT number %s to integer - %w", port, err)
 	}
 
 	if portN > 65535 || portN < 1 {
-		return fmt.Errorf("invalid port %q, port number should be <= 65535 and >= 1", port)
+		return fmt.Errorf("invalid port %q: %w", port, ErrInvalidPortRange)
 	}
 
 	return nil

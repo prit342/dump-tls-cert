@@ -8,6 +8,7 @@ enable = [
 
     # Default linters
     #"deadcode", # Finds unused code
+    "gosec",
     "errcheck", # Detect unchecked errors
     "gosimple", # Suggest code simplifications
     "govet", # Reports suspicious constructs
