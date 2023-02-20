@@ -3,21 +3,22 @@
 - Dumps TLS certificate chain presented by remote `host:port` in PEM format
 - Uses TLS over TCP to connect to the remote `host:port`
 - The certificate is dumped to STDOUT and written to a file `server-cert.pem`
-- Does not verify the remote SSL/TLS certificate presented by the remote `host:port`
+- By default does not verify the remote TLS certificate chain presented by the remote `host:port`
 
 ### Usage
 
 ```bash
 go build -o dump-tls-cert .
 
-❯ ./dump-tls-cert -help               
-Usage of ./dump-tls-cert:
+❯ Usage of ./dump-tls-cert:
   -file string
-        output file where the certificate will be written (default "server-cert.pem")
+    	output file where the certificate will be written (default "server-cert.pem")
   -host string
-        host name to connect to example www.google.com
+    	host name to connect to example www.google.com
   -port string
-        port to connect to (default "443")
+    	port to connect to (default "443")
+  -skip
+    	skip verification of TLS certs (default true)
 
 ❯ ./dump-tls-cert -host www.google.com
 
