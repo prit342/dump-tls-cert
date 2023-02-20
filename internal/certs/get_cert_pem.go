@@ -7,146 +7,97 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"strconv"
 	"strings"
 )
 
 const (
-	LayerFourProtocol = "tcp"
+	protocol = "tcp" // The default Protocol that we use
+
 )
 
-// TLSClient  holds a new TLS Client
-type TLSClient struct {
-	Protocol string
-	Host     string
-	Port     string
-}
-
-// NewTLSClient returns a new instance of a TLSClient
-func NewTLSClient(protocol, host, port string) *TLSClient {
-	
-	return &TLSClient{
-		Host:     host,
-		Port:     port,
-		Protocol: protocol,
-	}
-}
-
+// TLSDialer - dials a remote host over TCP to grab x509 certs
 type TLSDialer interface {
 	TLSDial() ([]*x509.Certificate, error)
 }
 
-//// TLSDialOverHTTPSProxy - dials over an HTTPS proxy server
-//func TLSDialOverHTTPSProxy() error {
-//
-//	u, err := url.Parse("http://localhost:3128")
-//	//
-//	if err != nil {
-//		log.Fatalln(err)
-//	}
-//	tlsConfig := &tls.Config{
-//		InsecureSkipVerify: true,
-//	}
-//
-//	tunnelDialer := gdialer.New(u, gdialer.WithConnectionTimeout(7*time.Second))
-//	conn, err := tunnelDialer.Dial("tcp", "www.google.com:443")
-//
-//	if err != nil {
-//		log.Fatalln(err)
-//	}
-//
-//	var b []byte
-//	_, err = conn.Read(b)
-//
-//	if err != nil {
-//		log.Fatalln(err)
-//	}
-//
-//	fmt.Println(string(b))
-//
-//	tls.Client(conn, tlsConfig)
-//
-//	return nil
-//}
+type TLSClient struct {
+	Host       string // Host to connect to
+	Port       string // Port to connect to
+	SkipVerify bool   // skip verification of the TLS cert presetned by Host:Port
+}
 
-// TLSDial - Dial a Host and Port over TLS and get the certificate chain
+// NewTLSClient returns a new instance of a TLSClient
+func NewTLSClient(host, port string, skipverify bool) *TLSClient {
+	return &TLSClient{
+		Host:       host,
+		Port:       port,
+		SkipVerify: skipverify,
+	}
+}
+
+// Check if TLSClient implements the TLSDialer interface
+var _ TLSDialer = (*TLSClient)(nil)
+
+// TLSDial - Dial a Host and Port over TLS and retrieves the certificate chain
 func (tc *TLSClient) TLSDial() ([]*x509.Certificate, error) {
-	
 	var certs []*x509.Certificate
-	
+
 	config := &tls.Config{
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: tc.SkipVerify,
 		ServerName:         tc.Host,
 	}
-	
+
 	if err := CheckPort(tc.Port); err != nil {
 		return certs, err
 	}
-	
-	tc.Protocol = strings.ToLower(tc.Protocol)
-	
-	if ok := IsEmptyString(tc.Protocol); ok {
-		return certs, fmt.Errorf("protocol cannot be empty string")
-	}
-	
+
 	if ok := IsEmptyString(tc.Host); ok {
 		return certs, fmt.Errorf("host cannot be empty string")
 	}
-	
-	if tc.Protocol != LayerFourProtocol {
-		return certs, fmt.Errorf("only %s protocol is supported, not %s", LayerFourProtocol, tc.Protocol)
-	}
-	
-	target := tc.Host + ":" + tc.Port
-	
-	conn, err := tls.Dial(tc.Protocol, target, config)
-	
-	defer func() {
+
+	target := net.JoinHostPort(tc.Host, tc.Port)
+
+	conn, err := tls.Dial(protocol, target, config)
+
+	defer func(conn *tls.Conn) {
 		if conn == nil {
 			return
 		}
 		if err := conn.Close(); err != nil {
 			fmt.Println(err)
-			os.Exit(1)
 		}
-	}()
-	
+	}(conn)
+
 	if err != nil {
-		return certs, fmt.Errorf("unable to dial %s://%s - %w", tc.Protocol, target, err)
+		return certs, fmt.Errorf("unable to dial %s://%s - %w", protocol, target, err)
 	}
-	
-	certs = conn.ConnectionState().PeerCertificates
-	
-	if len(certs) < 1 {
-		return nil, fmt.Errorf("no certs were returned by the server %s", target)
+
+	state := conn.ConnectionState()
+
+	if len(state.PeerCertificates) < 1 {
+		return nil, fmt.Errorf("no certificates found for %s", target)
 	}
-	
-	return certs, nil
-	
+
+	return state.PeerCertificates, nil
 }
 
-// GetCertFromHostPortInPEM - Gets a certificate chain in PEM format from a host over TCP
-func GetCertFromHostPortInPEM(d TLSDialer, out io.Writer) error {
-	
-	certs, err := d.TLSDial()
-	
+// GetCert - uses TLSDialer to dial remote host and grab the TLS certificate in PEM format
+func GetCert(td TLSDialer, w io.Writer) error {
+	// get the certs
+	certs, err := td.TLSDial()
 	if err != nil {
 		return err
 	}
-	
-	//fmt.Println(certs)
-	
-	if certs == nil || len(certs) < 1 {
-		return fmt.Errorf("no certs were returned by the server")
-	}
-	
+
 	var b bytes.Buffer
-	
+
 	for _, cert := range certs {
 		if cert == nil {
 			continue
 		}
+
 		err := pem.Encode(&b, &pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: cert.Raw,
@@ -155,35 +106,33 @@ func GetCertFromHostPortInPEM(d TLSDialer, out io.Writer) error {
 			return err
 		}
 	}
-	
+
 	pemCert := b.String()
-	
+
 	if pemCert == "" {
 		return fmt.Errorf("no certs were returned by the server")
 	}
-	
-	_, err = io.Copy(out, &b)
-	
+
+	_, err = io.Copy(w, &b)
+
 	if err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
 // CheckPort - validates if a string is a valid TCP/UDP port
 func CheckPort(port string) error {
-	
 	portN, err := strconv.Atoi(port)
-	
 	if err != nil {
 		return fmt.Errorf("unable to convert PORT number %v to integer - %w", port, err)
 	}
-	
+
 	if portN > 65535 || portN < 1 {
 		return fmt.Errorf("invalid port %q, port number should be <= 65535 and >= 1", port)
 	}
-	
+
 	return nil
 }
 
