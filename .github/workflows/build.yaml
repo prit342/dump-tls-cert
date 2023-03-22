@@ -3,7 +3,9 @@ on:
   push:
 
   pull_request:
-    branches: ['main']
+    branches:
+    - 'main'
+    - 'release/gh-actions'
 
 jobs:
   lint:
