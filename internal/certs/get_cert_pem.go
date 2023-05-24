@@ -138,10 +138,11 @@ func (tc *TLSClient) TLSDial() (certs []*x509.Certificate, err error) {
 	}
 
 	defer func() {
-		if conn != nil {
-			if cerr := conn.Close(); cerr != nil && err == nil {
-				err = fmt.Errorf("error closing connection: %w", cerr)
-			}
+		if conn == nil { // ensure we don't panic
+			return
+		}
+		if closeErr := conn.Close(); closeErr != nil { // close the connection
+			err = errors.Join(err, closeErr) // return both the errors
 		}
 	}()
 
