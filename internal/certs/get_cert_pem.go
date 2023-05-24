@@ -49,48 +49,48 @@ func NewTLSClient(host, port string, skipverify bool) *TLSClient {
 // Check if TLSClient implements the TLSDialer interface
 var _ TLSDialer = (*TLSClient)(nil)
 
-// TLSDial - Dial a Host and Port over TLS and retrieves the certificate chain
-func (tc *TLSClient) TLSDial() ([]*x509.Certificate, error) {
-	var certs []*x509.Certificate
+// // TLSDial - Dial a Host and Port over TLS and retrieves the certificate chain
+// func (tc *TLSClient) TLSDial() ([]*x509.Certificate, error) {
+// 	var certs []*x509.Certificate
 
-	config := &tls.Config{
-		InsecureSkipVerify: tc.SkipVerify,
-		ServerName:         tc.Host,
-	}
+// 	config := &tls.Config{
+// 		InsecureSkipVerify: tc.SkipVerify,
+// 		ServerName:         tc.Host,
+// 	}
 
-	if err := CheckPort(tc.Port); err != nil {
-		return certs, fmt.Errorf("invalid port: %w", err)
-	}
+// 	if err := CheckPort(tc.Port); err != nil {
+// 		return certs, fmt.Errorf("invalid port: %w", err)
+// 	}
 
-	if ok := IsEmptyString(tc.Host); ok {
-		return certs, ErrEmptyHost
-	}
+// 	if ok := IsEmptyString(tc.Host); ok {
+// 		return certs, ErrEmptyHost
+// 	}
 
-	target := net.JoinHostPort(tc.Host, tc.Port)
+// 	target := net.JoinHostPort(tc.Host, tc.Port)
 
-	conn, err := tls.Dial(protocol, target, config)
+// 	conn, err := tls.Dial(protocol, target, config)
 
-	defer func(conn *tls.Conn) {
-		if conn == nil {
-			return
-		}
-		if err := conn.Close(); err != nil {
-			fmt.Println(err)
-		}
-	}(conn)
+// 	defer func(conn *tls.Conn) {
+// 		if conn == nil {
+// 			return
+// 		}
+// 		if err := conn.Close(); err != nil {
+// 			fmt.Println(err)
+// 		}
+// 	}(conn)
 
-	if err != nil {
-		return certs, fmt.Errorf("unable to dial %s://%s - %w", protocol, target, err)
-	}
+// 	if err != nil {
+// 		return certs, fmt.Errorf("unable to dial %s://%s - %w", protocol, target, err)
+// 	}
 
-	state := conn.ConnectionState()
+// 	state := conn.ConnectionState()
 
-	if len(state.PeerCertificates) < 1 {
-		return nil, fmt.Errorf("no certificates found for %s: %w", target, ErrNoCertsReturned)
-	}
+// 	if len(state.PeerCertificates) < 1 {
+// 		return nil, fmt.Errorf("no certificates found for %s: %w", target, ErrNoCertsReturned)
+// 	}
 
-	return state.PeerCertificates, nil
-}
+// 	return state.PeerCertificates, nil
+// }
 
 // GetCert - uses TLSDialer to dial remote host and grab the TLS certificate in PEM format
 func GetCert(td TLSDialer, w io.Writer) error {
@@ -151,4 +151,50 @@ func IsEmptyString(s string) bool {
 		return true
 	}
 	return false
+}
+
+// TLSDial - Dial a Host and Port over TLS and retrieves the certificate chain
+func (tc *TLSClient) TLSDial() (certs []*x509.Certificate, err error) {
+
+	config := &tls.Config{
+		InsecureSkipVerify: tc.SkipVerify,
+		ServerName:         tc.Host,
+	}
+
+	if errC := CheckPort(tc.Port); errC != nil {
+		err = fmt.Errorf("invalid port: %w", errC)
+		return
+	}
+
+	if ok := IsEmptyString(tc.Host); ok {
+		err = ErrEmptyHost
+		return
+	}
+
+	target := net.JoinHostPort(tc.Host, tc.Port)
+
+	conn, err := tls.Dial(protocol, target, config)
+
+	if err != nil {
+		err = fmt.Errorf("unable to dial %s://%s - %w", protocol, target, err)
+		return
+	}
+
+	defer func() {
+		if conn != nil {
+			if cerr := conn.Close(); cerr != nil && err == nil {
+				err = fmt.Errorf("error closing connection: %w", cerr)
+			}
+		}
+	}()
+
+	state := conn.ConnectionState()
+
+	if len(state.PeerCertificates) < 1 {
+		err = fmt.Errorf("no certificates found for %s: %w", target, ErrNoCertsReturned)
+		return
+	}
+
+	certs = state.PeerCertificates
+	return
 }
