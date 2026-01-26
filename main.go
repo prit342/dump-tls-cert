@@ -1,3 +1,4 @@
+// Package main provides a command-line tool to dump TLS certificates from remote hosts.
 package main
 
 import (
@@ -6,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"dump-tls-cert/internal/certs"
+	"dump-tls-cert/pkg/certs"
 )
 
 func main() {
@@ -29,10 +30,10 @@ func main() {
 		log.Fatalln("host parameter is missing")
 	}
 
-	client := certs.NewTLSClient(host, port, skipTLSVerify)
+	c := certs.NewTLSClient(host, port, skipTLSVerify)
 
 	// open a file to write
-	f, err := os.OpenFile(file, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(file, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0600) // #nosec G304 -- file path is user-provided via CLI flag
 
 	defer func() {
 		if err := f.Close(); err != nil {
@@ -47,7 +48,7 @@ func main() {
 	// create a multi writer to write the data to STDOUT and file
 	mw := io.MultiWriter(os.Stdout, f)
 
-	if err := certs.GetCert(client, mw); err != nil {
+	if err := c.GetCert(mw); err != nil {
 		log.Fatalln(err)
 	}
 }

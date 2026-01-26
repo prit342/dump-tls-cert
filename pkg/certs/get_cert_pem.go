@@ -1,3 +1,4 @@
+// Package certs provides functionality to retrieve and handle TLS certificates from remote hosts.
 package certs
 
 import (
@@ -9,8 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -26,20 +25,21 @@ var (
 	ErrEmptyHost = errors.New("host cannot be empty string")
 )
 
-// TLSDialer - dials a remote host over TCP to grab x509 certs
-type TLSDialer interface {
-	TLSDial() ([]*x509.Certificate, error)
+// TLSCertGetter - dials a remote host over TCP to grab x509 certs
+type TLSCertGetter interface {
+	GetCert(w io.Writer) error
 }
 
-type TLSClient struct {
+// tlsClient - client that can perfrom TLS Dial over TCP
+type tlsClient struct {
 	Host       string // Host to connect to
 	Port       string // Port to connect to
 	SkipVerify bool   // skip verification of the TLS cert presetned by Host:Port
 }
 
 // NewTLSClient returns a new instance of a TLSClient
-func NewTLSClient(host, port string, skipverify bool) *TLSClient {
-	return &TLSClient{
+func NewTLSClient(host, port string, skipverify bool) TLSCertGetter {
+	return &tlsClient{
 		Host:       host,
 		Port:       port,
 		SkipVerify: skipverify,
@@ -47,12 +47,21 @@ func NewTLSClient(host, port string, skipverify bool) *TLSClient {
 }
 
 // Check if TLSClient implements the TLSDialer interface
-var _ TLSDialer = (*TLSClient)(nil)
+var _ TLSCertGetter = (*tlsClient)(nil)
 
 // GetCert - uses TLSDialer to dial remote host and grab the TLS certificate in PEM format
-func GetCert(td TLSDialer, w io.Writer) error {
+func (tc *tlsClient) GetCert(w io.Writer) error {
+
+	if w == nil {
+		return errors.New("invalid write sent")
+	}
+
+	if tc == nil {
+		return errors.New("invalid TLS client")
+	}
+
 	// get the certs
-	certs, err := td.TLSDial()
+	certs, err := tc.tlsDial()
 	if err != nil {
 		return err
 	}
@@ -88,42 +97,20 @@ func GetCert(td TLSDialer, w io.Writer) error {
 	return nil
 }
 
-// CheckPort - validates if a string is a valid TCP/UDP port
-func CheckPort(port string) error {
-	portN, err := strconv.Atoi(port)
-	if err != nil {
-		return fmt.Errorf("unable to convert PORT number %s to integer - %w", port, err)
-	}
-
-	if portN > 65535 || portN < 1 {
-		return fmt.Errorf("invalid port %q: %w", port, ErrInvalidPortRange)
-	}
-
-	return nil
-}
-
-// IsEmptyString - validates in a string is empty
-func IsEmptyString(s string) bool {
-	if s := strings.TrimSpace(s); s == "" {
-		return true
-	}
-	return false
-}
-
-// TLSDial - Dial a Host and Port over TLS and retrieves the certificate chain
-func (tc *TLSClient) TLSDial() (certs []*x509.Certificate, err error) {
+// tlsDial - Dials a Host and Port over TLS and retrieves the certificate chain
+func (tc *tlsClient) tlsDial() (certs []*x509.Certificate, err error) {
 
 	config := &tls.Config{
-		InsecureSkipVerify: tc.SkipVerify,
+		InsecureSkipVerify: tc.SkipVerify, // #nosec G402 -- intentionally configurable for testing
 		ServerName:         tc.Host,
 	}
 
-	if errC := CheckPort(tc.Port); errC != nil {
+	if errC := checkPort(tc.Port); errC != nil {
 		err = fmt.Errorf("invalid port: %w", errC)
 		return
 	}
 
-	if ok := IsEmptyString(tc.Host); ok {
+	if ok := isEmptyString(tc.Host); ok {
 		err = ErrEmptyHost
 		return
 	}

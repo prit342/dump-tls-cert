@@ -3,12 +3,11 @@ package certs
 import (
 	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	url2 "net/url"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -86,35 +85,32 @@ func TestGetCertFromHostPortInPEM(t *testing.T) {
 
 		req.NoError(err)
 
-		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		testServer := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("OK"))
 		}))
 
 		testServer.TLS = &tls.Config{
 			Certificates: []tls.Certificate{certChain},
+			MinVersion:   tls.VersionTLS12,
 		}
 		testServer.StartTLS()
 		defer testServer.Close()
 
 		t.Logf("started HTTP server at %s", testServer.URL)
 
-		url, err := url2.Parse(testServer.URL)
+		hostURL, err := url.Parse(testServer.URL)
 
 		req.NoError(err)
 
-		host, port, err := net.SplitHostPort(url.Host)
+		host, port, err := net.SplitHostPort(hostURL.Host)
 
 		req.NoError(err)
 
-		client := &TLSClient{
-			Host:       host,
-			Port:       port,
-			SkipVerify: true,
-		}
+		client := NewTLSClient(host, port, true)
 
 		var b bytes.Buffer
 
-		err = GetCert(client, &b)
+		err = client.GetCert(&b)
 
 		req.NoError(err)
 
@@ -122,19 +118,19 @@ func TestGetCertFromHostPortInPEM(t *testing.T) {
 	})
 
 	t.Run("test with invalid protocol", func(t *testing.T) {
-		client := &TLSClient{
+		client := &tlsClient{
 			Host:       "localhost",
 			Port:       "2222222",
 			SkipVerify: true,
 		}
 
-		err := GetCert(client, io.Discard)
+		err := client.GetCert(io.Discard)
 		require.Error(t, err)
 	})
 
 	t.Run("test with invalid port", func(t *testing.T) {
 		client := NewTLSClient("localhost", "-1", true)
-		err := GetCert(client, io.Discard)
+		err := client.GetCert(io.Discard)
 		require.Error(t, err)
 	})
 }
@@ -159,8 +155,8 @@ func TestCheckPort(t *testing.T) {
 			tt := tt
 			t.Parallel()
 
-			if err := CheckPort(tt.args.port); (err != nil) != tt.wantErr {
-				t.Errorf("CheckPort() error = %v, wantErr %v", err, tt.wantErr)
+			if err := checkPort(tt.args.port); (err != nil) != tt.wantErr {
+				t.Errorf("checkPort() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -179,32 +175,9 @@ func TestIsEmptyString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsEmptyString(tt.s); got != tt.want {
-				t.Errorf("IsEmptyString() = %v, want %v", got, tt.want)
+			if got := isEmptyString(tt.s); got != tt.want {
+				t.Errorf("isEmptyString() = %v, want %v", got, tt.want)
 			}
 		})
 	}
-}
-
-type mockClient struct{}
-
-func (m *mockClient) TLSDial() ([]*x509.Certificate, error) {
-	emptyReply := make([]*x509.Certificate, 1)
-	return emptyReply, nil
-}
-
-func TestEmptyCertificateReply(t *testing.T) {
-	m := &mockClient{}
-	_, err := m.TLSDial()
-
-	req := require.New(t)
-	req.Nil(err)
-
-	var b bytes.Buffer
-
-	err = GetCert(m, &b)
-
-	req.Error(err)
-
-	req.Equal("", b.String())
 }
